@@ -11,4 +11,5 @@
 - [ ] Number of request
 - [ ] TTL arg
 - [ ] ipv6
-- [ ] Anything new
+- [ ] time delay between packets
+- [ ] Size of packet
