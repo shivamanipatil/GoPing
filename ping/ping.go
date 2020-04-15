@@ -1,6 +1,7 @@
 package ping
 
 import (
+	"bytes"
 	"fmt"
 	"net"
 	"os"
@@ -45,7 +46,7 @@ func Ping4(domain string, seqNumber int, size int, ttl int, wait int) (int, time
 
 	//Making ICMP message body and then marshalling
 	data := make([]byte, size)
-	copy(data[:size], "abcd")
+	data = bytes.Repeat([]byte("A"), size)
 	msg := icmp.Message{
 		Type: ipv4.ICMPTypeEcho,
 		Code: 0,
@@ -136,7 +137,7 @@ func Ping6(domain string, seqNumber int, size int, ttl, wait int) (int, time.Dur
 
 	//Making ICMP message body then marshalling
 	data := make([]byte, size)
-	copy(data[:size], "abcd")
+	data = bytes.Repeat([]byte("A"), size)
 	msg := icmp.Message{
 		Type: ipv6.ICMPTypeEchoRequest,
 		Code: 0,
