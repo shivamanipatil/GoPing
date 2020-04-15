@@ -13,7 +13,7 @@ import (
 )
 
 //Ping4 Used with ipv4
-func Ping4(domain string, seqNumber int, size int) (*net.IPAddr, time.Duration, error) {
+func Ping4(domain string, seqNumber int, size int, ttl int) (*net.IPAddr, time.Duration, error) {
 	//LookupIP gives Ip's slice we extract ipv6 address and convert to net.IPAddr from IP
 	ipSlice, err := net.LookupIP(domain)
 	if err != nil {
@@ -39,9 +39,10 @@ func Ping4(domain string, seqNumber int, size int) (*net.IPAddr, time.Duration, 
 	}
 
 	//Set TTL
-	err = connNew.SetTTL(3)
+	err = connNew.SetTTL(ttl)
 	if err != nil {
-		return addr, 0, err
+		// return addr, 0, err
+		log.Fatal(err)
 	}
 
 	//Making ICMP message body and then marshalling
@@ -90,17 +91,22 @@ func Ping4(domain string, seqNumber int, size int) (*net.IPAddr, time.Duration, 
 	if err != nil {
 		return addr, 0, err
 	}
-	if parsedMsg.Type == ipv4.ICMPTypeEchoReply {
+	switch parsedMsg.Type {
+	case ipv4.ICMPTypeEchoReply:
 		fmt.Printf("%v bytes from %v: icmp_seq=%v ttl=%v ", n, receiveAddr, parsedMsg.Body.(*icmp.Echo).Seq, controlMessage.TTL)
 		return addr, span, nil
-	} else {
-		return addr, 0, fmt.Errorf("Received %+v from %v", parsedMsg, receiveAddr)
+	case ipv4.ICMPTypeTimeExceeded:
+		fmt.Println("Time limit exceeded.")
+		return addr, span, nil
+	default:
+		fmt.Println("Unknown ICMP message.")
+		return addr, span, nil
 	}
 
 }
 
 //Ping6 Used with ipv6
-func Ping6(domain string, seqNumber int, size int) (*net.IPAddr, time.Duration, error) {
+func Ping6(domain string, seqNumber int, size int, ttl int) (*net.IPAddr, time.Duration, error) {
 	//LookupIP gives Ip's slice we extract ipv6 address and convert to net.IPAddr from IP
 	ipSlice, err := net.LookupIP(domain)
 	if err != nil {
@@ -126,7 +132,7 @@ func Ping6(domain string, seqNumber int, size int) (*net.IPAddr, time.Duration, 
 	}
 
 	//Set Hop limit
-	err = connNew.SetHopLimit(100)
+	err = connNew.SetHopLimit(ttl)
 	if err != nil {
 		return addr, 0, err
 	}
@@ -177,13 +183,18 @@ func Ping6(domain string, seqNumber int, size int) (*net.IPAddr, time.Duration, 
 	if err != nil {
 		return addr, 0, err
 	}
-	if parsedMsg.Type == ipv6.ICMPTypeEchoReply {
+
+	switch parsedMsg.Type {
+	case ipv6.ICMPTypeEchoReply:
 		fmt.Printf("%v bytes from %v: icmp_seq=%v ttl=%v ", n, receiveAddr, parsedMsg.Body.(*icmp.Echo).Seq, controlMessage.HopLimit)
 		return addr, span, nil
-	} else {
-		return addr, 0, fmt.Errorf("Received %+v from %v", parsedMsg, receiveAddr)
+	case ipv6.ICMPTypeTimeExceeded:
+		fmt.Println("Time limit exceeded.")
+		return addr, span, nil
+	default:
+		fmt.Println("Unknown ICMP message.")
+		return addr, span, nil
 	}
-
 }
 
 // Return first ipv4 address in slice of net.IP else nil

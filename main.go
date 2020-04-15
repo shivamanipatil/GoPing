@@ -20,6 +20,7 @@ func main() {
 	intervalPtr := flag.Float64("i", 1, "Interval seconds between two requests.")
 	sizePtr := flag.Int("s", 56, "Size of packet.")
 	protocolPtr := flag.Int("p", 4, "Protocol number 4 for ipv4 and 6 for ipv6.")
+	ttlPtr := flag.Int("t", 64, "Give ttl for ipv4 or hop limit for ipv6.")
 	flag.Parse()
 
 	if *protocolPtr != 4 && *protocolPtr != 6 {
@@ -43,7 +44,7 @@ func main() {
 	receivedReq := 0
 	var durations []time.Duration
 	//Generic type to hold ping.Ping4 and ping.Ping6
-	var Ping func(domain string, seqNumber int, size int) (*net.IPAddr, time.Duration, error)
+	var Ping func(domain string, seqNumber int, size int, ttl int) (*net.IPAddr, time.Duration, error)
 	if *protocolPtr == 4 {
 		Ping = ping.Ping4
 	} else {
@@ -62,7 +63,7 @@ Loop:
 				break Loop
 			}
 			time.Sleep(time.Duration(*intervalPtr) * time.Second)
-			_, duration, err := Ping(*hostPtr, receivedReq, *sizePtr)
+			_, duration, err := Ping(*hostPtr, receivedReq, *sizePtr, *ttlPtr)
 			totalReq++
 			if err != nil {
 				fmt.Print(err)
