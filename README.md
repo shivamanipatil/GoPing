@@ -6,10 +6,13 @@
 1. Sent and received sizes.
 1. Loss percentage.
 1. RTT duration.
+1. Number of requests flag.
+1. Size of packet can be set.
+1. Time delay between packets can be set.
 
 ## To be added
-- [ ] Number of request
+- [X] Number of request
 - [ ] TTL arg
 - [ ] ipv6
-- [ ] time delay between packets
-- [ ] Size of packet
+- [X] time delay between packets
+- [X] Size of packet
