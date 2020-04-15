@@ -15,7 +15,9 @@ func main() {
 
 	//Command line args and flags
 	hostPtr := flag.String("host", "localhost", "Host name or IP address")
-	countPtr := flag.Int("c", -1, "Stop after sending this number of requests.")
+	countPtr := flag.Int("c", -1, "Stop after sending this number of requests. Default -1 is for infinite.")
+	intervalPtr := flag.Int("i", 1, "Interval seconds between two requests.")
+	sizePtr := flag.Int("s", 56, "Size of packet.")
 	flag.Parse()
 
 	//Go routine to listen for SIGINT signal
@@ -32,6 +34,7 @@ func main() {
 	//Ping loop
 	totalReq := 0
 	successfulReq := 0
+	fmt.Printf("PING %v sending %v bytes of data\n", *hostPtr, *sizePtr)
 Loop:
 	for {
 		select {
@@ -42,14 +45,14 @@ Loop:
 				break Loop
 			}
 			fmt.Println(*countPtr, totalReq)
-			time.Sleep(time.Second)
-			addr, duration, err := ping.Ping(*hostPtr, successfulReq)
+			time.Sleep(time.Duration(*intervalPtr) * time.Second)
+			_, duration, err := ping.Ping4(*hostPtr, successfulReq, *sizePtr)
 			totalReq++
 			if err != nil {
 				fmt.Print(err)
 				continue
 			}
-			fmt.Printf("Host is %v and duration is %v\n", addr, duration)
+			fmt.Printf("time=%v\n", duration)
 			successfulReq++
 		}
 	}
