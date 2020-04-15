@@ -3,7 +3,6 @@ package main
 import (
 	"flag"
 	"fmt"
-	"net"
 	"os"
 	"os/signal"
 	"syscall"
@@ -21,6 +20,7 @@ func main() {
 	sizePtr := flag.Int("s", 56, "Size of packet.")
 	protocolPtr := flag.Int("p", 4, "Protocol number 4 for ipv4 and 6 for ipv6.")
 	ttlPtr := flag.Int("t", 64, "Give ttl for ipv4 or hop limit for ipv6.")
+	waitPtr := flag.Int("W", 3, "Time  to  wait for a response, in seconds.")
 	flag.Parse()
 
 	if *protocolPtr != 4 && *protocolPtr != 6 {
@@ -43,8 +43,8 @@ func main() {
 	totalReq := 0
 	receivedReq := 0
 	var durations []time.Duration
-	//Generic type to hold ping.Ping4 and ping.Ping6
-	var Ping func(domain string, seqNumber int, size int, ttl int) (*net.IPAddr, time.Duration, error)
+	//Type to hold ping.Ping4 and ping.Ping6
+	var Ping func(domain string, seqNumber int, size int, ttl int, wait int) (int, time.Duration, error)
 	if *protocolPtr == 4 {
 		Ping = ping.Ping4
 	} else {
@@ -63,13 +63,15 @@ Loop:
 				break Loop
 			}
 			time.Sleep(time.Duration(*intervalPtr) * time.Second)
-			_, duration, err := Ping(*hostPtr, receivedReq, *sizePtr, *ttlPtr)
+			code, duration, err := Ping(*hostPtr, receivedReq, *sizePtr, *ttlPtr, *waitPtr)
 			totalReq++
 			if err != nil {
-				fmt.Print(err)
-				break Loop
+				fmt.Println(err)
+				if code == 0 {
+					break Loop
+				}
+				continue Loop
 			}
-			fmt.Printf("time=%v\n", duration)
 			durations = append(durations, duration)
 			receivedReq++
 		}
@@ -79,7 +81,7 @@ Loop:
 
 func statistics(receivedReq, totalReq int, durations []time.Duration) {
 	fmt.Printf("\n----- Statistics -----\n")
-	fmt.Printf("Sent: %v Received: %v Loss: %v percent\n", totalReq, receivedReq, (float32(totalReq-receivedReq)*100)/float32(receivedReq))
+	fmt.Printf("Sent: %v Received: %v Loss: %v percent\n", totalReq, receivedReq, (float32(totalReq-receivedReq)*100)/float32(totalReq))
 	if len(durations) > 0 {
 		min, max, avg := durations[0], durations[0], time.Duration(0)
 		for _, duration := range durations {

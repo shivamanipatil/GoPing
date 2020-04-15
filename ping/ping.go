@@ -2,7 +2,6 @@ package ping
 
 import (
 	"fmt"
-	"log"
 	"net"
 	"os"
 	"time"
@@ -12,37 +11,36 @@ import (
 	"golang.org/x/net/ipv6"
 )
 
-//Ping4 Used with ipv4
-func Ping4(domain string, seqNumber int, size int, ttl int) (*net.IPAddr, time.Duration, error) {
+//Ping4 return checking code, duration and error
+func Ping4(domain string, seqNumber int, size int, ttl int, wait int) (int, time.Duration, error) {
 	//LookupIP gives Ip's slice we extract ipv6 address and convert to net.IPAddr from IP
 	ipSlice, err := net.LookupIP(domain)
 	if err != nil {
-		return nil, 0, err
+		return 0, 0, err
 	}
 	ip, err := findIpv4(ipSlice)
 	if err != nil {
-		return nil, 0, err
+		return 0, 0, err
 	}
 	addr, _ := net.ResolveIPAddr("ip", ip.String())
 
 	//Connection for listening packets
 	conn, err := net.ListenPacket("ip4:icmp", "0.0.0.0")
 	if err != nil {
-		return addr, 0, err
+		return 0, 0, err
 	}
 	defer conn.Close()
 
 	//This connection is needed for setting TTL flag and also accessing ip headers like TTL
 	connNew := ipv4.NewPacketConn(conn)
 	if err := connNew.SetControlMessage(ipv4.FlagTTL, true); err != nil {
-		log.Fatal(err)
+		return 0, 0, err
 	}
 
 	//Set TTL
 	err = connNew.SetTTL(ttl)
 	if err != nil {
-		// return addr, 0, err
-		log.Fatal(err)
+		return 0, 0, err
 	}
 
 	//Making ICMP message body and then marshalling
@@ -58,83 +56,82 @@ func Ping4(domain string, seqNumber int, size int, ttl int) (*net.IPAddr, time.D
 		}}
 	b, err := msg.Marshal(nil)
 	if err != nil {
-		return addr, 0, err
+		return 0, 0, err
 	}
 
 	//Timer started just before writing message to connection
 	start := time.Now()
 	n, err := connNew.WriteTo(b, nil, addr)
 	if err != nil {
-		return addr, 0, err
+		return 0, 0, err
 	}
 	if n != len(b) {
-		return addr, 0, fmt.Errorf("Couldn't write whole message...\n")
+		return 0, 0, fmt.Errorf("Couldn't write whole message...\n")
 	}
 
-	//Setiting read deadline
-	err = connNew.SetReadDeadline(time.Now().Add(3 * time.Second))
+	//Setting read deadline
+	err = connNew.SetReadDeadline(time.Now().Add(time.Duration(wait) * time.Second))
 	if err != nil {
-		return addr, 0, err
+		return 1, 0, err
 	}
 
 	//Reading from connection
 	receiveIPBuffer := make([]byte, 2000)
 	n, controlMessage, receiveAddr, err := connNew.ReadFrom(receiveIPBuffer)
 	if err != nil {
-		return addr, 0, err
+		return 1, 0, err
 	}
 
-	span := time.Since(start)
+	duration := time.Since(start)
 
 	//Parsing the message
 	parsedMsg, err := icmp.ParseMessage(1, receiveIPBuffer[:n])
 	if err != nil {
-		return addr, 0, err
+		return 1, 0, err
 	}
 	switch parsedMsg.Type {
 	case ipv4.ICMPTypeEchoReply:
-		fmt.Printf("%v bytes from %v: icmp_seq=%v ttl=%v ", n, receiveAddr, parsedMsg.Body.(*icmp.Echo).Seq, controlMessage.TTL)
-		return addr, span, nil
+		fmt.Printf("%v bytes from %v: icmp_seq=%v ttl=%v time=%v\n",
+			n, receiveAddr, parsedMsg.Body.(*icmp.Echo).Seq, controlMessage.TTL, duration)
+		return 1, duration, nil
 	case ipv4.ICMPTypeTimeExceeded:
-		fmt.Println("Time limit exceeded.")
-		return addr, span, nil
+		return 1, duration, fmt.Errorf("Time limit exceeded.")
 	default:
-		fmt.Println("Unknown ICMP message.")
-		return addr, span, nil
+		return 1, duration, fmt.Errorf("Other ICMP Error.")
 	}
 
 }
 
-//Ping6 Used with ipv6
-func Ping6(domain string, seqNumber int, size int, ttl int) (*net.IPAddr, time.Duration, error) {
+//Ping6 return checking code, duration and error
+func Ping6(domain string, seqNumber int, size int, ttl, wait int) (int, time.Duration, error) {
 	//LookupIP gives Ip's slice we extract ipv6 address and convert to net.IPAddr from IP
 	ipSlice, err := net.LookupIP(domain)
 	if err != nil {
-		return nil, 0, err
+		return 0, 0, err
 	}
 	ip, err := findIpv6(ipSlice)
 	if err != nil {
-		return nil, 0, err
+		return 0, 0, err
 	}
 	addr, _ := net.ResolveIPAddr("ip", ip.String())
 
 	//Connection for listening packets
 	conn, err := net.ListenPacket("ip6:ipv6-icmp", "::")
 	if err != nil {
-		return addr, 0, err
+		return 0, 0, err
 	}
 	defer conn.Close()
 
 	//This connection is needed for setting TTL flag and also accessing ip headers like TTL
 	connNew := ipv6.NewPacketConn(conn)
 	if err := connNew.SetControlMessage(ipv6.FlagHopLimit, true); err != nil {
-		log.Fatal(err)
+		return 0, 0, err
 	}
 
 	//Set Hop limit
 	err = connNew.SetHopLimit(ttl)
 	if err != nil {
-		return addr, 0, err
+		return 0, 0, err
 	}
 
 	//Making ICMP message body then marshalling
@@ -150,50 +147,51 @@ func Ping6(domain string, seqNumber int, size int, ttl int) (*net.IPAddr, time.D
 		}}
 	b, err := msg.Marshal(nil)
 	if err != nil {
-		return addr, 0, err
+		return 0, 0, err
 	}
 
 	//Timer started just before writing message to connection
 	start := time.Now()
 	i, err := connNew.WriteTo(b, nil, addr)
 	if err != nil {
-		return addr, 0, err
+		return 0, 0, err
 	}
 	if i != len(b) {
-		return addr, 0, fmt.Errorf("Couldn't write whole message...\n")
+		return 0, 0, fmt.Errorf("Couldn't write whole message...\n")
 	}
 
 	//Setiting read deadline
-	err = connNew.SetReadDeadline(time.Now().Add(3 * time.Second))
+	err = connNew.SetReadDeadline(time.Now().Add(time.Duration(wait) * time.Second))
 	if err != nil {
-		return addr, 0, err
+		return 1, 0, err
 	}
 
 	//Reading from connection
 	receiveIPBuffer := make([]byte, 2000)
 	n, controlMessage, receiveAddr, err := connNew.ReadFrom(receiveIPBuffer)
 	if err != nil {
-		return addr, 0, err
+		return 1, 0, err
 	}
 
-	span := time.Since(start)
+	duration := time.Since(start)
 
 	//Parsing the message
 	parsedMsg, err := icmp.ParseMessage(58, receiveIPBuffer[:n])
 	if err != nil {
-		return addr, 0, err
+		return 1, 0, err
 	}
 
 	switch parsedMsg.Type {
 	case ipv6.ICMPTypeEchoReply:
-		fmt.Printf("%v bytes from %v: icmp_seq=%v ttl=%v ", n, receiveAddr, parsedMsg.Body.(*icmp.Echo).Seq, controlMessage.HopLimit)
-		return addr, span, nil
+		fmt.Printf("%v bytes from %v: icmp_seq=%v ttl=%v time=%v\n",
+			n, receiveAddr, parsedMsg.Body.(*icmp.Echo).Seq, controlMessage.HopLimit, duration)
+		return 1, duration, nil
 	case ipv6.ICMPTypeTimeExceeded:
 		fmt.Println("Time limit exceeded.")
-		return addr, span, nil
+		return 1, duration, nil
 	default:
 		fmt.Println("Unknown ICMP message.")
-		return addr, span, nil
+		return 1, duration, nil
 	}
 }
 
