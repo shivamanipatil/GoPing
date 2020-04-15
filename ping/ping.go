@@ -2,6 +2,7 @@ package ping
 
 import (
 	"fmt"
+	"log"
 	"net"
 	"os"
 	"time"
@@ -31,6 +32,18 @@ func Ping4(domain string, seqNumber int, size int) (*net.IPAddr, time.Duration, 
 	}
 	defer conn.Close()
 
+	//This connection is needed for setting TTL flag and also accessing ip headers like TTL
+	connNew := ipv4.NewPacketConn(conn)
+	if err := connNew.SetControlMessage(ipv4.FlagTTL, true); err != nil {
+		log.Fatal(err)
+	}
+
+	//Set TTL
+	err = connNew.SetTTL(3)
+	if err != nil {
+		return addr, 0, err
+	}
+
 	//Making ICMP message body and then marshalling
 	data := make([]byte, size)
 	copy(data[:size], "abcd")
@@ -49,29 +62,36 @@ func Ping4(domain string, seqNumber int, size int) (*net.IPAddr, time.Duration, 
 
 	//Timer started just before writing message to connection
 	start := time.Now()
-	i, err := conn.WriteTo(b, addr)
+	n, err := connNew.WriteTo(b, nil, addr)
 	if err != nil {
 		return addr, 0, err
 	}
-	if i != len(b) {
+	if n != len(b) {
 		return addr, 0, fmt.Errorf("Couldn't write whole message...\n")
 	}
 
-	//Make receive buffer and read to it
-	receiveBuffer := make([]byte, 2000)
-	n, receiveAddr, err := conn.ReadFrom(receiveBuffer)
+	//Setiting read deadline
+	err = connNew.SetReadDeadline(time.Now().Add(3 * time.Second))
 	if err != nil {
 		return addr, 0, err
 	}
+
+	//Reading from connection
+	receiveIPBuffer := make([]byte, 2000)
+	n, controlMessage, receiveAddr, err := connNew.ReadFrom(receiveIPBuffer)
+	if err != nil {
+		return addr, 0, err
+	}
+
 	span := time.Since(start)
 
 	//Parsing the message
-	parsedMsg, err := icmp.ParseMessage(1, receiveBuffer[:n])
+	parsedMsg, err := icmp.ParseMessage(1, receiveIPBuffer[:n])
 	if err != nil {
 		return addr, 0, err
 	}
 	if parsedMsg.Type == ipv4.ICMPTypeEchoReply {
-		fmt.Printf("%v bytes from %v: icmp_seq=%v ", n, receiveAddr, parsedMsg.Body.(*icmp.Echo).Seq)
+		fmt.Printf("%v bytes from %v: icmp_seq=%v ttl=%v ", n, receiveAddr, parsedMsg.Body.(*icmp.Echo).Seq, controlMessage.TTL)
 		return addr, span, nil
 	} else {
 		return addr, 0, fmt.Errorf("Received %+v from %v", parsedMsg, receiveAddr)
@@ -99,6 +119,18 @@ func Ping6(domain string, seqNumber int, size int) (*net.IPAddr, time.Duration, 
 	}
 	defer conn.Close()
 
+	//This connection is needed for setting TTL flag and also accessing ip headers like TTL
+	connNew := ipv6.NewPacketConn(conn)
+	if err := connNew.SetControlMessage(ipv6.FlagHopLimit, true); err != nil {
+		log.Fatal(err)
+	}
+
+	//Set Hop limit
+	err = connNew.SetHopLimit(100)
+	if err != nil {
+		return addr, 0, err
+	}
+
 	//Making ICMP message body then marshalling
 	data := make([]byte, size)
 	copy(data[:size], "abcd")
@@ -115,8 +147,9 @@ func Ping6(domain string, seqNumber int, size int) (*net.IPAddr, time.Duration, 
 		return addr, 0, err
 	}
 
+	//Timer started just before writing message to connection
 	start := time.Now()
-	i, err := conn.WriteTo(b, addr)
+	i, err := connNew.WriteTo(b, nil, addr)
 	if err != nil {
 		return addr, 0, err
 	}
@@ -124,21 +157,28 @@ func Ping6(domain string, seqNumber int, size int) (*net.IPAddr, time.Duration, 
 		return addr, 0, fmt.Errorf("Couldn't write whole message...\n")
 	}
 
-	//Make receive buffer and read to it
-	receiveBuffer := make([]byte, 2000)
-	n, receiveAddr, err := conn.ReadFrom(receiveBuffer)
+	//Setiting read deadline
+	err = connNew.SetReadDeadline(time.Now().Add(3 * time.Second))
 	if err != nil {
 		return addr, 0, err
 	}
+
+	//Reading from connection
+	receiveIPBuffer := make([]byte, 2000)
+	n, controlMessage, receiveAddr, err := connNew.ReadFrom(receiveIPBuffer)
+	if err != nil {
+		return addr, 0, err
+	}
+
 	span := time.Since(start)
 
 	//Parsing the message
-	parsedMsg, err := icmp.ParseMessage(58, receiveBuffer[:n])
+	parsedMsg, err := icmp.ParseMessage(58, receiveIPBuffer[:n])
 	if err != nil {
 		return addr, 0, err
 	}
 	if parsedMsg.Type == ipv6.ICMPTypeEchoReply {
-		fmt.Printf("%v bytes from %v: icmp_seq=%v ", n, receiveAddr, parsedMsg.Body.(*icmp.Echo).Seq)
+		fmt.Printf("%v bytes from %v: icmp_seq=%v ttl=%v ", n, receiveAddr, parsedMsg.Body.(*icmp.Echo).Seq, controlMessage.HopLimit)
 		return addr, span, nil
 	} else {
 		return addr, 0, fmt.Errorf("Received %+v from %v", parsedMsg, receiveAddr)
@@ -146,6 +186,7 @@ func Ping6(domain string, seqNumber int, size int) (*net.IPAddr, time.Duration, 
 
 }
 
+// Return first ipv4 address in slice of net.IP else nil
 func findIpv4(addresses []net.IP) (net.IP, error) {
 	for _, address := range addresses {
 		if address.To4() != nil {
@@ -155,6 +196,7 @@ func findIpv4(addresses []net.IP) (net.IP, error) {
 	return nil, fmt.Errorf("Couldn't find ipv4 address of host.")
 }
 
+// Return first ipv6 address in slice of net.IP else nil
 func findIpv6(addresses []net.IP) (net.IP, error) {
 	for _, address := range addresses {
 		if address.To4() == nil {
