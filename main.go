@@ -16,7 +16,7 @@ func main() {
 	//Command line args and flags
 	hostPtr := flag.String("host", "localhost", "Host name or IP address")
 	countPtr := flag.Int("c", -1, "Stop after sending this number of requests. Default -1 is for infinite.")
-	intervalPtr := flag.Int("i", 1, "Interval seconds between two requests.")
+	intervalPtr := flag.Float64("i", 1, "Interval seconds between two requests.")
 	sizePtr := flag.Int("s", 56, "Size of packet.")
 	flag.Parse()
 
@@ -33,7 +33,8 @@ func main() {
 
 	//Ping loop
 	totalReq := 0
-	successfulReq := 0
+	receivedReq := 0
+	var durations []time.Duration
 	fmt.Printf("PING %v sending %v bytes of data\n", *hostPtr, *sizePtr)
 Loop:
 	for {
@@ -44,17 +45,35 @@ Loop:
 			if *countPtr == totalReq {
 				break Loop
 			}
-			fmt.Println(*countPtr, totalReq)
 			time.Sleep(time.Duration(*intervalPtr) * time.Second)
-			_, duration, err := ping.Ping4(*hostPtr, successfulReq, *sizePtr)
+			_, duration, err := ping.Ping4(*hostPtr, receivedReq, *sizePtr)
 			totalReq++
 			if err != nil {
 				fmt.Print(err)
 				continue
 			}
 			fmt.Printf("time=%v\n", duration)
-			successfulReq++
+			durations = append(durations, duration)
+			receivedReq++
 		}
 	}
-	fmt.Print(totalReq, successfulReq)
+	statistics(receivedReq, totalReq, durations)
+}
+
+func statistics(receivedReq, totalReq int, durations []time.Duration) {
+	fmt.Printf("\n----- Statistics -----\n")
+	fmt.Printf("Sent: %v Received: %v Loss: %v percent\n", totalReq, receivedReq, (float32(totalReq-receivedReq)*100)/float32(receivedReq))
+	if len(durations) > 0 {
+		min, max, avg := durations[0], durations[0], time.Duration(0)
+		for _, duration := range durations {
+			if duration < min {
+				min = duration
+			}
+			if duration > max {
+				max = duration
+			}
+			avg += duration
+		}
+		fmt.Printf("rtt --- min / max / avg : %v / %v / %v \n", min, max, avg/time.Duration(len(durations)))
+	}
 }
